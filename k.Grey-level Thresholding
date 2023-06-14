@@ -1,0 +1,47 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-75.85918581455755, 43.33716686404813],
+          [-75.85918581455755, 43.04079278559835],
+          [-75.69027101963567, 43.04079278559835],
+          [-75.69027101963567, 43.33716686404813]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//Define a study area that captures Onondaga Lake and the surrounding area
+var studyarea = ee.Geometry.Polygon(
+        [[[-75.85918581455755, 43.33716686404813],
+          [-75.85918581455755, 43.04079278559835],
+          [-75.69027101963567, 43.04079278559835],
+          [-75.69027101963567, 43.33716686404813]]]);
+          
+//Import a top-of-atmosphere reflectance Landsat 5 image.
+var image = ee.Image('LANDSAT/LT05/C01/T1_TOA/LT05_015030_20100531').clip(studyarea);
+//Center map display on Syracuse with a zoom level of 12
+Map.setCenter(-75.8001, 43.1887,12);
+//Display image as color infrared composite.
+Map.addLayer(image, {bands: ['B4', 'B3', 'B2'], max: 0.5}, 'input image',false);
+
+          
+//Select out the NIR band from the input image
+var NIRband = image.select('B4');
+
+//Create a histogram of the spectral response in the NIR band using the geometry identified
+var histogram2 = ui.Chart.image.histogram(NIRband, studyarea);
+
+// Display the histogram.
+print(histogram2);
+
+//Create a binary mask to filter out water based on the reflectance information (remove greater value)
+var watermask = NIRband.gte(0.07);
+
+//Use the water mask to create an image with water pixels removed.
+var nowaterimage= image.updateMask(watermask);
+
+//Display the output water-masked image using a CIR composite
+Map.addLayer(nowaterimage, {bands: ['B4', 'B3', 'B2'], max: 0.5}, 'water-masked');

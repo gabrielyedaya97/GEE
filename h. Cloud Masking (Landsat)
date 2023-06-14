@@ -1,0 +1,47 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[13.155709037104279, 52.72262599536558],
+          [13.155709037104279, 52.358234381676425],
+          [13.690533808880016, 52.358234381676425],
+          [13.690533808880016, 52.72262599536558]]], null, false),
+    geometry2 = 
+    /* color: #d63000 */
+    /* shown: false */
+    ee.Geometry.Point([13.416589531143982, 52.51138432981733]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Function to cloud mask from the pixel_qa band of Landsat 8 SR data.
+var l8 = ee.Image('LANDSAT/LC08/C01/T1_SR/LC08_192024_20191007');
+  
+  // Bits 3 and 5 are cloud shadow and cloud, respectively.
+  var cloudShadowBitMask = 1 << 3;
+  var cloudsBitMask = 1 << 5;
+  var snowBitMask = 1 << 4;
+
+  // Get the pixel QA band.
+  var qa = l8.select('pixel_qa');
+
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0)
+      .and(qa.bitwiseAnd(cloudsBitMask).eq(0))
+      .and(qa.bitwiseAnd(snowBitMask).eq(0));
+
+  // Return the masked image, scaled to reflectance, without the QA bands.
+var l8masking = ee.Image('LANDSAT/LC08/C01/T1_SR/LC08_192024_20191007').updateMask(mask)
+
+  //Visualization
+Map.setCenter(14.2986, 51.8514,8);
+
+
+
+var viz ={min:0,max:0.2,bands:['B4','B3','B2']};
+Map.addLayer(l8.divide(10000), viz, 'landsat no masking');
+
+Map.addLayer(l8masking.divide(10000), viz, 'Landsat cloud masking');

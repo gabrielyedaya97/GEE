@@ -1,0 +1,45 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[13.996163138666779, 52.769180075371196],
+          [13.996163138666779, 52.40517661343013],
+          [14.530987910442516, 52.40517661343013],
+          [14.530987910442516, 52.769180075371196]]], null, false),
+    geometry2 = 
+    /* color: #d63000 */
+    /* shown: false */
+    ee.Geometry.Point([14.268029960831482, 52.59154695266782]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Function to cloud mask from the pixel_qa band of Landsat 8 SR data.
+var  S2= ee.Image('COPERNICUS/S2_SR/20190906T101029_20190906T101026_T33UVU');
+  
+  // Bits 10 and 11 are clouds and cirrus, respectively.
+  var cloudBitMask = 1 << 10;
+  var cirrusBitMask = 1 << 11;
+
+  // Get the pixel QA band.
+  var qa = S2.select('QA60')
+
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0).and(
+             qa.bitwiseAnd(cirrusBitMask).eq(0))
+
+  // Return the masked image, scaled to reflectance, without the QA bands.
+var S2masking = ee.Image('COPERNICUS/S2_SR/20190906T101029_20190906T101026_T33UVU').updateMask(mask)
+
+  //Visualization
+Map.setCenter(14.311, 52.7449,8);
+
+
+
+var viz ={min:0,max:0.2,bands:['B4','B3','B2']};
+Map.addLayer(S2.divide(10000), viz, 'Sentinel no masking');
+
+Map.addLayer(S2masking.divide(10000), viz, 'Sentinel cloud masking');

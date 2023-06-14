@@ -1,0 +1,191 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[119.789575008854, 23.66603328243976],
+          [119.789575008854, 22.407345675492337],
+          [121.2232908291665, 22.407345675492337],
+          [121.2232908291665, 23.66603328243976]]], null, false),
+    ROI = 
+    /* color: #d63000 */
+    /* shown: false */
+    ee.Geometry.Polygon(
+        [[[120.23432877318838, 22.43280789823967],
+          [121.93720963256338, 22.083293692146132],
+          [122.14064193840672, 22.935645839273516],
+          [122.34938946197911, 23.782675513845746],
+          [120.63277569244786, 24.13657262468008]]]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+
+//zoom to the image
+Map.centerObject(geometry,9);
+
+// set reference and target image
+var image1  = ee.Image('LANDSAT/LC08/C01/T1_SR/LC08_117044_20180313');
+var image2  = ee.Image('LANDSAT/LC08/C01/T1_SR/LC08_117044_20180516');
+
+
+var ref = image1.divide(10000)
+var tar = image2.divide(10000)
+
+//set bands
+var ref = ref.select('B[2-6]*');
+var tar = tar.select('B[2-6]*');
+
+// Rename the source bands to more readable names
+var bandNames = ['blue', 'green','red','NIR','SWIR']
+
+var reference = ref.rename(bandNames)
+var target = tar.rename(bandNames)
+
+// define function to display histogram
+
+var showHistogram = function (image,name,band) {
+    var options = {
+                   title    : 'Histogram of ' + name,
+                   fontSize : 20,
+                   hAxis    : {title:'DN'},
+                   vAxis    : {title:'Count of DN'},
+                   series   :{ 0: {color: 'blue'},}
+    };
+
+  var histogram = ui.Chart.image.histogram(image.select(band),ROI,512,50)
+    .setSeriesNames([band])
+    .setOptions(options);
+  print(histogram);
+};
+
+
+//compute function get histogram data
+var gethistdata = function (image, band){
+                  var histogram = image.reduceRegion({
+                      reducer   :ee.Reducer.histogram(2048),
+                      geometry  :ROI,
+                      scale     : 750,
+                      maxPixels : 1e9
+});
+
+//get dn values of x axis
+var dnlist = ee.List(ee.Dictionary(histogram.get(band)).get('bucketMeans'));
+
+//get count values of y axis
+var countlist  = ee.List(ee.Dictionary(histogram.get(band)).get('histogram'));
+
+//compute cumulative sum of counts
+var cumulativeCountsArray = ee.Array(countlist).accum({axis:0});
+
+//extract the last of element of total cont of array
+var totalcount = cumulativeCountsArray.get([-1]);
+
+//divide each value to make range between 0-1 (this will be probability at each DN)
+var cumulativeProbabilities = cumulativeCountsArray.divide(totalcount);
+
+// create merge array with dn and the probabilities
+var array = ee.Array.cat({arrays:[dnlist,cumulativeProbabilities],axis:1});
+
+// FeatureCollections give is a lot of flexibility such as charting, classification etc.
+// Convert the array into a feature collection with null geometries
+var fc = ee.FeatureCollection(array.toList().map(function(list) {
+  return ee.Feature(null, {
+    dn:ee.List(list).get(0),
+    probability:ee.List(list).get(1)});
+}));
+  return fc ;
+};
+
+
+//define function to display cumulative distriobution function CDF of a band
+var showcdf = function(image,name,band) {
+                      var cdf     =gethistdata(image,band);
+                      
+                      var options = {
+                        title   :  'Cumulative Distribution Function of ' + name,
+                        fontSize: 20,
+                        hAxis   :{title:'DN'},
+                        vAxis   :{title:'Cumulative Probability'},
+                        series  :{0:{color:'blue'},
+                          
+                        }
+                      };
+                      
+                      var cdfchart =ui.Chart.feature.byFeature({
+                        features  :cdf,
+                        xProperty :'dn',
+                        yProperties:['probability']
+                      }).setOptions(options);
+                      
+                      print(cdfchart);
+};
+
+
+//compute function to equalize the image
+var equalize = function(referenceimage, targetimage, band) {
+  var referenceHistData = gethistdata(referenceimage,band);
+  var targetHistData = gethistdata(targetimage,band);
+  
+  // When you build a classifier, the default mode is to output
+  // discrete class numbers. But you can set the mode to 'REGRESSION'
+  // to have the classifier output continuous values from standard regression
+  
+  // We build 2 classifiers to approximate the CDF of each image
+  // Classifier dnToProb will take the a DN value and predict the cumulative probability
+  // Classifier probToDn will take the cumulative probability and predict the DN value
+  // We train dnToProb on target image and probToDn on reference image
+  
+  var dntoprob = ee.Classifier.smileRandomForest(100)
+                        .setOutputMode('REGRESSION')
+                        .train({
+                          features  : targetHistData,
+                          classProperty: 'probability',
+                          inputProperties: ['dn']
+                        });
+                        
+  
+  var probtodn= ee.Classifier.smileRandomForest(100)
+                            .setOutputMode('REGRESSION')
+                            .train({
+                              features: referenceHistData,
+                              classProperty:'dn',
+                              inputProperties: ['probability']
+                            });
+                            
+  // take target image and get cumulative probability
+  var targetImageProb = targetimage.select(band).rename('dn').classify(dntoprob,'probability');
+  var targetImageDN   = targetImageProb.classify(probtodn,band);
+  
+  return targetImageDN;
+};
+
+//match the image
+var match = function (referenceimage,targetimage,bandnames) {
+  var matchBands = bandNames.map(function(band) {
+    return equalize(referenceimage, targetimage, band);
+  });
+  return ee.Image.cat(matchBands);
+  
+};
+
+var matched= match(reference,target, bandNames);
+
+//show histogram ----> showHistogram = function (image,name,band)
+showHistogram(reference,'Reference Image','blue');
+showHistogram(target,'Target Image','blue');
+showHistogram(matched,'normalized Image','blue');
+
+//show cdf---> showcdf = function(image,name,band)
+showcdf(reference,'Reference Image','blue');
+showcdf(target,'Target Image','blue');
+showcdf(matched,'normalized Image','blue');
+
+
+var viz = {bands:['red','green','blue'], min :0, max:0.3, gamma:1.5}
+
+Map.addLayer(reference,viz,'reference');
+Map.addLayer(target,viz,'target');
+Map.addLayer(matched,viz,'trg_matched');

@@ -1,0 +1,143 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    ee.Geometry.Polygon(
+        [[[95.12257333139627, 3.851599386401137],
+          [94.72706551889627, 2.930373595637877],
+          [96.39698739389627, 1.6130794546832943],
+          [97.84718270639627, -0.7157903518797644],
+          [100.08839364389627, -4.096104444363082],
+          [101.67042489389627, -5.453648993108953],
+          [103.91163583139627, -6.6117304490984345],
+          [105.76832528452127, -6.0329989510834965],
+          [106.93287606577127, -4.950361053370535],
+          [108.67218853229849, -2.6392657690766415],
+          [107.78229595417349, -1.6402196953785888],
+          [105.38727642292349, -0.6846169346232229],
+          [105.15750892617677, 1.0065298348366274],
+          [104.79496009805177, 1.231706455882607],
+          [104.50382240273927, 1.3085918511083374],
+          [104.02042396523927, 1.2646576192540755],
+          [103.60843666055177, 1.154818842312184],
+          [103.43814857461427, 1.1987548850598198],
+          [102.16262640090923, 1.8747209840643793],
+          [98.80301378391567, 4.883776142288954],
+          [96.73758409641567, 6.021165500732339],
+          [94.76004503391567, 6.195948606482064]]]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+var sumatra = geometry;
+
+//check the global forest change per year in data catalog to obtain deprecetd data
+// global forest change data always update per year start from 2012-now
+// if want to check loss per year into image can substract it between two years
+var tree_cover_2016 = ee.Image('UMD/hansen/global_forest_change_2016_v1_4');
+var tree_sumatra = tree_cover_2016.clip(sumatra)
+
+var loss = tree_cover_2016.select('loss')
+var gain = tree_cover_2016.select('gain')
+
+var arealoss = loss.multiply(ee.Image.pixelArea());
+var areagain = gain.multiply(ee.Image.pixelArea());
+
+//calculate the area of loss pixels in Sumatra
+var lossumatra = arealoss.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: sumatra,
+  scale: 30,
+  maxPixels: 1e11
+})
+
+print(lossumatra.get('loss'),'TREE LOSS AREA Accumulation 2016 (m2)')
+
+//calculate the area of gain pixels in Sumatra
+var gainsumatra = areagain.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: sumatra,
+  scale: 30,
+  maxPixels: 1e11
+})
+
+print(gainsumatra.get('gain'),'TREE gain AREA Accumulation 2016 (m2)')
+
+//display map (R = loss, G = treecover, B = gain)
+Map.centerObject(sumatra,7)
+
+//Global Forest Change dataset shows forest extent in 2000 as green, forest loss as red, and forest gain as blue
+// Other color (pink or orange or brown indicates the activity at the nature may loss or gain)
+//i.e pink ( forest to gain)
+//i.e orange or brown (forest to loss)
+
+Map.addLayer(tree_sumatra,
+{bands: ['loss','treecover2000',  'gain'],max: [1, 255, 1]}, 
+'Forest cover, loss, gain')
+
+//2017
+var tree_cover_2017 = ee.Image('UMD/hansen/global_forest_change_2017_v1_5');
+var tree_sumatra7 = tree_cover_2017.clip(sumatra)
+
+var loss7 = tree_cover_2017.select('loss')
+var gain7 = tree_cover_2017.select('gain')
+
+var arealoss7 = loss7.multiply(ee.Image.pixelArea());
+var areagain7 = gain7.multiply(ee.Image.pixelArea());
+
+//calculate the area of loss pixels in Sumatra
+var lossumatra7 = arealoss7.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: sumatra,
+  scale: 30,
+  maxPixels: 1e11
+})
+
+print(lossumatra7.get('loss'),'TREE LOSS AREA Accumulation 2017 (m2)')
+
+//calculate the area of gain pixels in Sumatra
+var gainsumatra7 = areagain7.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: sumatra,
+  scale: 30,
+  maxPixels: 1e11
+})
+
+print(gainsumatra7.get('gain'),'TREE gain AREA Accumulation 2017 (m2)')
+//display map (R = loss, G = treecover, B = gain)
+Map.addLayer(tree_sumatra7,
+{bands: ['loss','treecover2000',  'gain'],max: [1, 255, 1]}, 
+'Forest cover, loss, gain')
+
+
+//graph per year (2001-2017)
+var image = tree_cover_2017.select('lossyear').clip(sumatra)
+
+var years = ee.List.sequence(1,17)
+
+var masking = years.map(function(a){
+  var mask = image.eq(ee.Number(a)).selfMask()
+  var h = mask.multiply(ee.Image.pixelArea())
+  var cal = h.reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: sumatra,
+    scale:30,
+    maxPixels: 1e11
+  })
+  return mask.set('area',ee.Number(cal.get('lossyear')).multiply(0.0001))
+              .set('year', ee.String(ee.Number(a).add(2000).toInt()))
+})
+
+var final_col =ee.ImageCollection.fromImages(masking)
+//print(final_col)
+
+var year2 =final_col.aggregate_array('year')
+var area = final_col.aggregate_array('area')
+
+var final_lists = ee.Dictionary.fromLists(year2,area)
+print(final_lists)
+
+var chart = ui.Chart.array.values({
+  array: final_lists.values(),
+  axis:0,
+  xLabels: final_lists.keys()
+}).setChartType('ColumnChart')
+
+print(chart,'Tree loss per year (m2)')

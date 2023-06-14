@@ -1,0 +1,264 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var crop = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[120.06585096699382, 23.12999787448225],
+          [120.06585096699382, 22.945487957222664],
+          [120.27733778340007, 22.945487957222664],
+          [120.27733778340007, 23.12999787448225]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+
+//call image and select band respectively
+var bname = ['blue','green','red','nir','swir1','swir2'];
+var band = ['B2','B3','B4','B5','B6','B7'];
+
+var image1 = ee.Image('LANDSAT/LC08/C01/T1_SR/LC08_118044_20200222')
+            .select(band,bname).divide(10000);
+print(image1)
+
+var image2 =ee.Image('LANDSAT/LC08/C01/T1_SR/LC08_118044_20200206')
+            .select(band,bname).divide(10000);
+print(image2)  
+
+
+//register image
+var image2 = image2.register(image1,60)
+
+var image1 = image1.clip(crop)
+var image2 = image2.clip(crop)
+
+//mean centered calculations
+var Scale = image1.projection().nominalScale()
+var bandNames = image1.bandNames()
+var geo = image1.geometry();
+
+
+var meanDict1 =image1.reduceRegion({
+              reducer: ee.Reducer.mean(),
+              geometry: geo,
+              scale   : Scale,
+              maxPixels: 1e9
+});
+
+var means1 = ee.Image.constant(meanDict1.values(bandNames));
+var centered1 = image1.subtract(means1);
+
+var meanDict2 =image2.reduceRegion({
+              reducer: ee.Reducer.mean(),
+              geometry: geo,
+              scale   : Scale,
+              maxPixels: 1e9
+});
+var means2 = ee.Image.constant(meanDict2.values(bandNames));
+var centered2 = image2.subtract(means2);
+
+
+//convert image to Array
+var array1 = centered1.toArray()
+var arrays1 = array1.toArray(1) // array image1
+
+
+
+var array2 = centered2.toArray()
+var arrays2 = array2.toArray(1) //array image2
+print(arrays2)
+
+//covariance array ---->> re check
+var covar1 = array1.reduceRegion({
+                reducer: ee.Reducer.centeredCovariance(),
+                geometry: geo,
+                scale   : Scale,
+                maxPixels: 1e9
+                });
+                
+var covar2 = array2.reduceRegion({
+                reducer: ee.Reducer.centeredCovariance(),
+                geometry: geo,
+                scale   : Scale,
+                maxPixels: 1e9
+                });
+                
+var covX = ee.Array(covar1.get('array')); 
+var covY = ee.Array(covar2.get('array'));
+
+var covXX = covX.matrixMultiply(covX.matrixInverse());
+var covXY = covX.matrixMultiply(covY.matrixInverse());
+var covYX = covY.matrixMultiply(covX.matrixInverse());
+var covYY = covY.matrixMultiply(covY.matrixInverse());
+
+//CCA
+
+var X = (covXX.matrixInverse())
+        .matrixMultiply(covXY)
+        .matrixMultiply(covYY.matrixInverse()).matrixMultiply(covYX);
+
+
+var Y = (covYY.matrixInverse())
+        .matrixMultiply(covYX)
+        .matrixMultiply(covXX.matrixInverse()).matrixMultiply(covXY);
+
+
+//eigens solutions
+
+  //eigen value and eigen vector solutions reference
+var eigenX = X.eigen();
+var eigvalX = eigenX.slice(1,0,1);
+var eigvecX = eigenX.slice(1,1);
+
+
+
+  //eigen value and eigen vector solutions reference
+var eigenY = Y.eigen();
+var eigvalY = eigenY.slice(1,0,1);
+var eigvecY = eigenY.slice(1,1);
+
+
+  //MAD Variates
+var U = ee.Image(eigvecX).matrixMultiply(arrays1)
+var V = ee.Image(eigvecY).matrixMultiply(arrays2)
+
+var MAD = U.subtract(V)
+
+var nBands = bandNames.length().divide(4)
+var bNames = centered1.bandNames()
+
+var bNames1 = bNames.slice(nBands)
+var bNames2 = bNames.slice(nBands)
+
+var MADs = MAD.arrayProject([0]).arrayFlatten([bNames]).float()
+
+
+  //Normalized MAD
+var stdevmad =MADs.reduceRegion({
+              reducer: ee.Reducer.stdDev(),
+              geometry: geo,
+              scale   : Scale,
+              maxPixels: 1e9
+});
+
+var stdevsmad = ee.Image.constant(stdevmad.values(bandNames));
+
+
+var NMAD1 = (MADs.pow(2).divide(stdevsmad.pow(2)));
+var NMAD  = NMAD1.select('blue').add(
+           NMAD1.select('green')).add(
+           NMAD1.select('red')).add(
+           NMAD1.select('nir')).add(
+           NMAD1.select('swir1')).add(
+           NMAD1.select('swir2')).rename('NMAD');
+
+
+
+// define function to display histogram
+
+var showHistogram = function (image,name,band) {
+    var options = {
+                   title    : 'Histogram of ' + name,
+                   fontSize : 20,
+                   hAxis    : {title:'DN'},
+                   vAxis    : {title:'Count of DN'},
+                   series   :{ 0: {color: 'blue'}},
+                   explorer : {}
+    };
+
+
+  var histogram = ui.Chart.image.histogram(image.select(band),crop,1750,3500)
+    .setSeriesNames([band])
+    .setOptions(options);
+  print(histogram);
+};
+
+//show histogram ----> showHistogram = function (image,name,band)
+showHistogram(NMAD,'NMAD','NMAD');
+
+
+// apply threshold to select NMAD with value less then the threshold
+ var stats = NMAD.reduceRegion({
+    reducer: ee.Reducer.percentile([30, 60, 90]), 
+    geometry: geo, 
+    scale: 30,
+    maxPixels: 1e9
+  });
+
+ print(stats)
+ 
+ var thold = ee.Number(stats.get('NMAD_p90'))
+
+
+// Apply threshold as PIF
+// Select the pif/non PIF mask.
+var thres = NMAD.gte(ee.Number(thold)).rename('thres')
+var NMAD = NMAD.addBands(thres);
+
+// Create a binary mask.
+//all the pixels that do not have the value of 1 in the PIF band (those that are change data) get a value of 0 in the resulting image.
+var mask = NMAD.select('thres').eq(0); //b
+
+// Update the composite mask with the water mask.
+var maskeref = image1.updateMask(mask);
+var masketrg = image2.updateMask(mask);
+
+
+
+// Radiometric Normalization 
+  //Slope and Intercept Definition
+  //Slope
+var stdevPIFref =maskeref.reduceRegion({
+              reducer: ee.Reducer.stdDev(),
+              geometry: geo,
+              scale   : Scale,
+              maxPixels: 1e9
+});
+
+var stdevsPIFref = ee.Image.constant(stdevPIFref.values(bandNames));
+
+var stdevPIFtrg =masketrg.reduceRegion({
+              reducer: ee.Reducer.stdDev(),
+              geometry: geo,
+              scale   : Scale,
+              maxPixels: 1e9
+});
+
+var stdevsPIFtrg = ee.Image.constant(stdevPIFtrg.values(bandNames));
+
+var slope = stdevsPIFref.divide(stdevsPIFtrg)
+
+
+    //Intercept
+var meanref =maskeref.reduceRegion({
+              reducer: ee.Reducer.mean(),
+              geometry: geo,
+              scale   : Scale,
+              maxPixels: 1e9
+});
+
+var meansref = ee.Image.constant(meanref.values(bandNames));
+
+var meantrg =masketrg.reduceRegion({
+              reducer: ee.Reducer.mean(),
+              geometry: geo,
+              scale   : Scale,
+              maxPixels: 1e9
+});
+
+var meanstrg = ee.Image.constant(meantrg.values(bandNames));
+
+var intercept = meansref.subtract(slope.multiply(meanstrg))
+
+  //Normalization step (linier regresion)
+var Norm = (image2.multiply(slope)).add(intercept) 
+
+var viz ={min:0,max:0.3,bands:['red','green','blue'],gamma: 1.55};
+
+Map.setCenter(120.1681, 23.0364,11.5)
+
+Map.addLayer(image1,viz,'ref')
+Map.addLayer(image2,viz,'trg')
+Map.addLayer(NMAD, {bands :['thres'],min :0, max:1, gamma: 0.75},'PIF=black',false)
+Map.addLayer(Norm,viz,'Normalize image')

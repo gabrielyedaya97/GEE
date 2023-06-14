@@ -1,0 +1,449 @@
+// Large Scale, Multi-temporal Remote Sensing Paleo river Networks
+
+//Set all the available Landsat 5 atmospheric corrected surface reflectance
+
+var L5_cloud = ee.ImageCollection('LANDSAT/LT05/C01/T1_SR');
+
+//Cloud Masking Image by using Pixel_qa band
+
+var cloudMaskL5 = function(image) {
+  var qa =image.select('pixel_qa');
+  
+  //if the cloud bit(5) is set and the cloud confidence (7) is high
+  //or cloud shadow bit is set (3), then its a bad pixels
+  
+  var cloud =qa.bitwiseAnd( 1 << 5 )
+             .and( qa.bitwiseAnd( 1 << 7 ))
+             .or( qa.bitwiseAnd( 1 << 3 ));
+             
+  //remove edge pixels taht dont occur in all bands
+  
+  var mask2 = image.mask().reduce(ee.Reducer.min());
+  
+  return image.updateMask(cloud.not()).updateMask(mask2);
+};
+
+var L5 = L5_cloud.map(cloudMaskL5);
+
+
+
+//define Are of Interest as a polygon
+var geometry=ee.Geometry.Polygon(
+            [[[77.59,28.80],
+              [77.59,30.29],
+              [77.06,30.56],
+              [76.83,30.74],
+              [76.55,31.09],
+              [74.45,31.09],
+              [73.84,30.21],
+              [73.84,28.80]]]);
+
+//define central poitn and scale (cor visualization purposes
+Map.setCenter(75.564,29.874,8);
+
+
+// ------------------ ooo ----------------
+
+//NDVSI (Normalized Difference vegetation Seasonality Index)
+
+//Load Landsat 5 collection (1984-2013) and select band 3 (red) and band 4 (NIR)
+
+var L5_NDVSI = L5.select(['B3','B4']);
+
+//select the L5 images corresponding the wet season and average their values
+
+var wet1 = L5_NDVSI.filter(ee.Filter.dayOfYear(1,120)).mean();
+
+var wet2 = L5_NDVSI.filter(ee.Filter.dayOfYear(181,240)).mean();
+
+var wet =(wet1.add(wet2)).divide(2)
+
+//count DVI wet
+var dvi_wet =wet.expression('B4 / (B4 + B3)',{
+  'B4' : wet.select('B4'),
+  'B3' : wet.select('B3')
+});
+
+//Map.addLayer(dvi_wet);
+
+//select the L5 images corresponding the dry season and average their values
+
+var dry1 = L5_NDVSI.filter(ee.Filter.dayOfYear(121,180)).mean();
+
+var dry2 = L5_NDVSI.filter(ee.Filter.dayOfYear(241,360)).mean();
+
+var dry =(dry1.add(dry2)).divide(2);
+
+//count DVI dry
+var dvi_dry =dry.expression('B4 / (B4 + B3)',{
+  'B4' : dry.select('B4'),
+  'B3' : dry.select('B3')
+});
+
+
+//develop NDVSI and clip it using AOI
+//NDVSI ---> (dry - wet)/(dry + wet)
+
+var ndvsi =((dvi_dry.subtract(dvi_wet))).divide((dvi_dry.add(dvi_wet))).clip(geometry);
+
+var ndvsi_pal = ['011301', '011d01', '012e01', '023b01', '004c00', '056201', '207041',
+                 '3e8601', '529400',  
+                 '66a000', '74a901', 'fcd163', 'f1b555', 'df923d', 'ce7e45', '9d350e'];
+                 
+Map.addLayer(ndvsi, {min :-0.075 , max: 0.0048, palette: ndvsi_pal},'NDVSI');
+
+//----------- ooo -----------
+
+//SMVTI  (Seasonal Multi Temporal Vegetation Indices);
+
+var eviL5 = ee.ImageCollection('LANDSAT/LT5_L1T_8DAY_EVI');
+
+// fiiltering each two months and extract the average values
+
+var eviL5_JanFeb =  eviL5.filter(ee.Filter.dayOfYear(1,60)).mean();
+
+var eviL5_MarApr =  eviL5.filter(ee.Filter.dayOfYear(61,120)).mean();
+
+var eviL5_MayJune = eviL5.filter(ee.Filter.dayOfYear(121,180)).mean();
+
+var eviL5_JulyAug = eviL5.filter(ee.Filter.dayOfYear(181,240)).mean();
+
+var eviL5_SepOct =  eviL5.filter(ee.Filter.dayOfYear(241,300)).mean();
+
+var eviL5_NovDes =  eviL5.filter(ee.Filter.dayOfYear(301,360)).mean();
+
+//create composite and clip into AOI
+
+var composite =ee.Image([eviL5_JanFeb, eviL5_MarApr,
+                         eviL5_MayJune,eviL5_JulyAug,
+                         eviL5_SepOct, eviL5_NovDes]).clip(geometry);
+                         
+//rename composite to make it easier to intepret
+var SMTVI = composite.select(['EVI', 'EVI_1', 'EVI_2', 'EVI_3', 'EVI_4', 'EVI_5' ],
+                             ['EVI_JanFeb', 'EVI_MarApr', 'EVI_MayJun', 'EVI_JulAug', 'EVI_SepOct', 'EVI_NovDes']);
+
+//print(SMTVI);
+
+//add new layer RGB composite from two onth EVI averages 7-8(R),3-4 (G), 1-2 (B)
+
+Map.addLayer(SMTVI, {bands: ['EVI_JulAug','EVI_MarApr','EVI_JanFeb']
+                  , min: 0.12340243216502006
+                  , max: 0.53306764076868230}
+                  , 'SMTVI_wet_months');
+                  
+Map.addLayer(SMTVI, {bands: ['EVI_MayJun','EVI_SepOct','EVI_NovDes']
+                  , min: 0.12340243216502006
+                  , max: 0.53306764076868230}
+                  , 'SMTVI_dry_months');
+                  
+
+// Wet Months Multi-Temporal tassled Cap Transformation
+
+//define an array of Tasselled cap Coefficients
+
+var coeff = ee.Array([
+                      [0.3037, 0.2973, 0.4743, 0.5585, 0.5082, 0.1863],
+                      [-0.28484,-0.2435,-0.5436, 0.7243, 0.0840, -0.1800],
+                      [0.1509, 0.1973, 0.3279, 0.3406, -0.7112, -0.4572],
+                      [-0.8242, 0.0849, 0.4392,-0.0580, 0.2012,-0.2768],
+                      [-0.3280, 0.0549, 0.1075, 0.1855, -0.4357, 0.8085],
+                      [0.1084, -0.9022, 0.4120, 0.0573, -0.0251, 0.0238]]);
+                      
+                      
+//load Landsat 5 images from collection
+
+var L5_bands= L5.select(['B1', 'B2', 'B3', 'B4', 'B5', 'B7']);
+
+//select the landsat images that correspond to wet season
+
+var L5_bands_wet1 = L5_bands.filter(ee.Filter.dayOfYear(1,120)).mean();
+
+var L5_bands_wet2 = L5_bands.filter(ee.Filter.dayOfYear(181,240)).mean();
+
+var L5_bands_wet = ((L5_bands_wet1.add(L5_bands_wet2)).divide(2)).clip(geometry);
+
+//make an array image with 1-D array per pixel
+
+var arrayimage1D_wet = L5_bands_wet.toArray();
+
+//make an array image with 2-D array per pixel
+
+var arrayimage2D_wet = arrayimage1D_wet.toArray(1);
+
+//do Matrix multiplication : 6x6 times 6x1
+
+var TCT_LS5_Wet = ee.Image(coeff)
+                  .matrixMultiply(arrayimage2D_wet)
+                  .arrayProject([0])
+                  .arrayFlatten([['brightness', 'greeness', 'wetness', 'fourth',
+                                  'fifth', 'sixth']]);
+                                  
+//display the first three bands of result and the input imagery
+
+var vizTCTwet = {bands:['brightness','greeness','wetness'], 
+                 min : [2915.8, -35.067, -1376.2],
+                 max : [6010, 1612.2, 442.56]
+};
+
+//add the result layer
+
+Map.addLayer(TCT_LS5_Wet, vizTCTwet, 'TCT_LS5_Wet');
+
+//------------ ooo -------------
+
+//Dry months multitemporal tasselled cap transformation
+
+//select landsat 5 images that correspond to dry months and clip it
+
+var L5_bands_dry1= L5_bands.filter(ee.Filter.dayOfYear(121,180)).mean();
+
+var L5_bands_dry2= L5_bands.filter(ee.Filter.dayOfYear(241,360)).mean();
+
+var L5_bands_dry = (L5_bands_dry1.add(L5_bands_dry2)).divide(2).clip(geometry);
+
+// make an 1d array per pixel
+
+var arrayimage1D_dry = L5_bands_dry.toArray();
+
+//make an 2D array per pixel
+
+var arrayimage2D_dry = arrayimage1D_dry.toArray(1);
+
+//do a matrices multiplycation
+
+var TCT_L5_DRY = ee.Image(coeff)
+                .matrixMultiply(arrayimage2D_dry)
+                .arrayProject([0])
+                .arrayFlatten([['brightness','greeness', 'wetness'
+                                ,'fourth', 'fifth', 'sixth']]);
+                          
+//display first tree bands of the result
+
+var vizTCTdry = { bands:['brightness', 'greeness', 'wetness'],
+                  min:[3259.5, -253.58, -1692.1],
+                  max:[6306.6, 1596.27, -342.66]
+};
+
+//add layer
+Map.addLayer(TCT_L5_DRY, vizTCTdry, 'TCT_LS5_Dry');
+
+//------------- ooo ------
+
+// wet months multi temporal principal component analysis
+
+//get some information about the input to be used later
+
+var scale = L5_bands_wet.projection().nominalScale();
+
+var bandNames =L5_bands_wet.bandNames();
+
+//mean center the data to enable a afaster covariance reducer
+
+var meanDict =L5_bands_wet.reduceRegion({
+              reducer: ee.Reducer.mean(),
+              geometry: geometry,
+              scale   : scale,
+              maxPixels: 1e9
+});
+
+var means = ee.Image.constant(meanDict.values(bandNames));
+
+print(means);
+var centered = L5_bands_wet.subtract(means);
+
+//this function return a list of new bands
+
+var getNewBandNames = function (prefix) {
+                       var seq= ee.List.sequence(1, bandNames.length());
+                       return seq.map(function(b) {
+                        return ee.String(prefix).cat(ee.Number(b).int());
+                       });
+};
+
+//this function accept mean centered imagery, a scale and a region to perform anaylsis
+//it returns the Principal Components(PC) in the region as a new image.
+
+var getPrincipalComponents = function(centered, scale, geometry) {
+    var arrays= centered.toArray();
+    
+    //compute teh covariance if the bands with in the region.
+    
+    var covar = arrays.reduceRegion({
+                reducer: ee.Reducer.centeredCovariance(),
+                geometry: geometry,
+                scale   : scale,
+                maxPixels: 1e9
+                });
+                
+    //get the'array cobvariance result and cast to an array
+    //this represents the band to band copvariance within the region
+    
+    var covarArray = ee.Array(covar.get('array'));
+    
+    print(covarArray,'covariance array')
+    //perform eigen analysis and slice apart the values and vectors.
+    
+    var eigens = covarArray.eigen();
+    
+    print(eigens, 'eigens')
+    
+    //thius is a P-length vector of eigen values.
+    
+    var eigenValues = eigens.slice(1,0,1);
+    print(eigenValues, 'eigens values')
+    
+    //this is a pxp matrix with eigenvector in rows
+    
+    var eigenVectors= eigens.slice(1,1);
+    print(eigenVectors,' eigen vectors')
+    
+    //convert array to 2D array for matrix computations
+    
+    var arrayImage = arrays.toArray(1);
+    
+    //left multiply the image array by the matrix of eigenvectors
+    
+    var principalComponents = ee.Image(eigenVectors).matrixMultiply(arrayImage);
+    
+    //turn the square roots of the EigenValues into a P-band image.
+    
+    var sdImage = ee.Image(eigenValues.sqrt())
+                .arrayProject([0])
+                .arrayFlatten([getNewBandNames('sd')]);
+    
+    //turn the pcs into a P-band image, normalized by SD.
+    return principalComponents
+          .arrayProject([0])
+          .arrayFlatten([getNewBandNames('pc')])
+          .divide(sdImage);
+};
+
+//get the PC at the specified scale and in the specified region
+
+var PCAL5wet = getPrincipalComponents(centered,scale,geometry);
+
+//define visualization parameters
+
+var vizPCAwet = {
+              bands :['pc4', 'pc2', 'pc1'],
+              min: [-3.23369],
+              max: [3.2845]
+};
+
+//add layer pca result
+
+Map.addLayer(PCAL5wet,vizPCAwet, 'PCA_COMPOSITE_WET');
+
+// Plot each PC as a new layer
+
+//for (var i = 0; i < bandNames.length().getInfo(); i++) {
+//  var band = PCAL5wet.bandNames().get(i).getInfo();
+//  Map.addLayer(PCAL5wet.select([band]), {min: -2, max: 2}, band);
+//}
+
+
+
+//------------------ 000 -------------
+
+//dry monthes multi temporal principal component analysis
+
+//get some information about the input to be used later
+
+//var scale1 = L5_bands_dry.projection().nominalScale();
+
+//var bandNames1 =L5_bands_dry.bandNames();
+// mean centere data to enable faster covariance reducer
+
+var meanDict_dry =L5_bands_dry.reduceRegion({
+              reducer: ee.Reducer.mean(),
+              geometry: geometry,
+              scale   : scale,
+              maxPixels: 1e9
+});
+
+var means_dry = ee.Image.constant(meanDict_dry.values(bandNames));
+
+print(means);
+var centered_dry = L5_bands_wet.subtract(means_dry);
+
+//this function return a list of new bands
+
+var getNewBandNames = function (prefix) {
+                       var seq= ee.List.sequence(1, bandNames.length());
+                       return seq.map(function(b) {
+                        return ee.String(prefix).cat(ee.Number(b).int());
+                       });
+};
+
+//this function accept mean centered imagery, a scale and a region to perform anaylsis
+//it returns the Principal Components(PC) in the region as a new image.
+
+var getPrincipalComponents_dry = function(centered_dry, scale, geometry) {
+    var arrays_dry= centered_dry.toArray();
+    
+    //compute teh covariance if the bands with in the region.
+    
+    var covar_dry = arrays_dry.reduceRegion({
+                reducer: ee.Reducer.centeredCovariance(),
+                geometry: geometry,
+                scale   : scale,
+                maxPixels: 1e9
+                });
+                
+    //get the'array cobvariance result and cast to an array
+    //this represents the band to band copvariance within the region
+    
+    var covarArray_dry = ee.Array(covar_dry.get('array'));
+    
+    print(covarArray_dry,'covariance array_dry')
+    //perform eigen analysis and slice apart the values and vectors.
+    
+    var eigens_dry = covarArray_dry.eigen();
+    
+    print(eigens_dry, 'eigens_dry')
+    
+    //thius is a P-length vector of eigen values.
+    
+    var eigenValues_dry = eigens_dry.slice(1,0,1);
+    print(eigenValues_dry, 'eigens values')
+    
+    //this is a pxp matrix with eigenvector in rows
+    
+    var eigenVectors_dry= eigens_dry.slice(1,1);
+    print(eigenVectors_dry,' eigen vectors_dry')
+    
+    //convert array to 2D array for matrix computations
+    
+    var arrayImage_dry = arrays_dry.toArray(1);
+    
+    //left multiply the image array by the matrix of eigenvectors
+    
+    var principalComponents_dry = ee.Image(eigenVectors_dry).matrixMultiply(arrayImage_dry);
+    
+    //turn the square roots of the EigenValues into a P-band image.
+    
+    var sdImage_dry = ee.Image(eigenValues_dry.sqrt())
+                .arrayProject([0])
+                .arrayFlatten([getNewBandNames('sd')]);
+    
+    //turn the pcs into a P-band image, normalized by SD.
+    return principalComponents_dry
+          .arrayProject([0])
+          .arrayFlatten([getNewBandNames('pc')])
+          .divide(sdImage_dry); 
+};
+
+
+//get the PC image in specified region
+
+var PCAL5dry= getPrincipalComponents_dry(centered_dry,scale, geometry);
+
+//define visual parameter
+
+var vizPCAdry = {
+                bands: ['pc4','pc2','pc1'],
+                min:[-2.2689],
+                max:[2.3412]
+};
+
+Map.addLayer(PCAL5dry,vizPCAdry, 'PCA_COMPOSITE_DRY')

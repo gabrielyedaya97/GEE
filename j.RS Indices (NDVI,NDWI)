@@ -1,0 +1,44 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = /* color: #ff0000 */ee.Geometry.Point([38.799487311639105, 7.548440938409558]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//date of interest
+var start= ee.Date('2020-05-09');
+var finish= ee.Date('2020-07-20');
+
+var ethiopia= ee.ImageCollection("COPERNICUS/S2_SR")
+.filterBounds(geometry)
+.filterDate(start,finish)
+.filterMetadata('CLOUDY_PIXEL_PERCENTAGE','less_than',20)
+.first();
+
+print(ethiopia);
+
+// NDVI Calculation
+var NIR= ethiopia.select('B8');
+var RED= ethiopia.select('B4');
+//using basic band math
+var ndvi1 = NIR.subtract(RED).divide(NIR.add(RED)).rename('NDVI');
+
+//using expression
+var ndvi2 = ethiopia.expression( '(B8-B4)/(B8+B4)',{'B8': NIR, 'B4': RED });
+
+//using normalized difference function
+var ndvi3= ethiopia.normalizedDifference(['B8', 'B4']);
+
+//Set color palette
+var ndvipal = 'f0570f,ff7f00,ffff00,7fff00,12882c'; //red to green
+
+//add layer
+Map.addLayer(ndvi1,{min:0, max:1, palette: ndvipal}, "NDVI 1");
+Map.addLayer(ndvi2,{min:0, max:1, palette: ndvipal}, "NDVI 2");
+Map.addLayer(ndvi3,{min:0, max:1, palette: ndvipal}, "NDVI 3");
+
+
+// NDWI Calculation
+var NIR= ethiopia.select('B8');
+var GREEN= ethiopia.select('B3');
+
+var ndwi1 = NIR.subtract(GREEN).divide(NIR.add(GREEN)).rename('NDWI');
+//Set color palette
+var ndwipal = '021893,4570a8,740699,804444,990623'; //blue to red
+Map.addLayer(ndwi1,{min:0, max:1, palette: ndwipal}, "NDWI");

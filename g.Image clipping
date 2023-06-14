@@ -1,0 +1,72 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    ee.Geometry.Polygon(
+        [[[89.32136630859377, 27.114630421026565],
+          [89.81166630859374, 27.114630421026565],
+          [89.81166630859374, 27.547723146873253],
+          [89.32136630859377, 27.547723146873253],
+          [89.32136630859377, 27.114630421026565]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//set the image
+var L8 = ee.Image('LANDSAT/LC08/C01/T1_SR/LC08_138041_20190303')
+
+var S2 = ee.Image('COPERNICUS/S2_SR/20190316T043701_20190316T044421_T45RYL')
+       
+
+
+var bandname = ['blue','green','red','nir','swir1','swir2'];
+var bl8 = ['B2','B3','B4','B5','B6','B7'];
+var bs2 = ['B2','B3','B4','B8','B11','B12'];
+
+var IL8 = L8.select(bl8,bandname);
+var IS2 = S2.select(bs2,bandname);
+
+print(IL8);
+print(IS2);
+
+//reprojection and rescale
+
+  // Reproject and rescale L8 to S2.
+
+var S2_30m = IS2.resample('bicubic').reproject({
+  crs: IL8.select('red').projection().crs(),
+  scale: 30
+}).set('system:time_start',IS2.date());
+
+
+//register image
+// Choose to register using only the 'Red' band.
+var L1RedBand = IL8.select('red');
+var L2RedBand = S2_30m.select('red');
+
+// Determine the displacement by matching only the 'Red' bands.
+var displacement = L2RedBand.displacement({
+  referenceImage: L1RedBand,
+  maxOffset: 50.0,//The maximum offset allowed when attempting to align the input images, in meters
+  patchWidth: 100.0 // Small enough to capture texture and large enough that ignorable 
+  //objects are small within the patch. Automatically ditermined if not provided 
+});
+
+//wrap the imgL8SR image
+var image2 = S2_30m.displace(displacement);
+
+//crop the images
+var image1= ee.Image(IL8).clip(geometry).divide(10000);
+var image2= ee.Image(image2).clip(geometry).divide(10000);
+
+
+ //visualization parameters
+var viz ={min:0,max:0.3,bands:['red','green','blue'],gamma: 1.55};
+
+
+Map.setCenter(89.533383, 27.289433,10)
+
+
+Map.addLayer(image1,viz,'landsat');
+Map.addLayer(image2,viz,'sentinel2');
+
+
+
+

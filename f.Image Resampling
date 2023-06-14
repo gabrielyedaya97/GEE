@@ -1,0 +1,42 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[13.155709037104279, 52.72262599536558],
+          [13.155709037104279, 52.358234381676425],
+          [13.690533808880016, 52.358234381676425],
+          [13.690533808880016, 52.72262599536558]]], null, false),
+    geometry2 = 
+    /* color: #d63000 */
+    /* shown: false */
+    ee.Geometry.Point([13.416589531143982, 52.51138432981733]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//load landsat and sentinel images
+var l8 = ee.Image('LANDSAT/LC08/C01/T1_SR/LC08_192024_20190430');
+var s2 = ee.Image('COPERNICUS/S2_SR/20200406T101559_20200406T101807_T33UUU');
+
+  // Reescale Sentinel to 30m ->downsampling
+var S2_30m = s2.resample('bicubic').reproject({
+  crs: l8.select('B4').projection().crs(),
+  scale: 30
+});
+
+  // Reescale landsat to 10 ->upsampling
+var l8_10m = l8.resample('bicubic').reproject({
+  crs: s2.select('B4').projection().crs(),
+  scale: 10
+});
+
+  //Visualization
+Map.setCenter(13.41,52.51,13);
+var viz ={min:0,max:0.3,bands:['B4','B3','B2']};
+Map.addLayer(l8.divide(10000), viz, 'landsat 30m');
+Map.addLayer(s2.divide(10000), viz, 'Sentinel 10m');
+Map.addLayer(S2_30m.divide(10000), viz, 'Sentinel after rescale 30m');
+Map.addLayer(l8_10m.divide(10000), viz, 'Landsat after rescale 10m');

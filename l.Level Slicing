@@ -1,0 +1,32 @@
+//Load and display a top-of-atmosphere reflectance Landsat 8 image
+var image = ee.Image('LANDSAT/LC08/C02/T1_TOA/LC08_013032_20201003');
+//Center map display on Syracuse with a zoom level of 12
+Map.setCenter(-73.9239, 40.667,10);
+//Display image as color infrared composite.
+Map.addLayer(image, {bands: ['B4', 'B3', 'B2'], max: 0.5}, 'input image');
+
+//Create an NDWI image using band 4 (NIR) and 5 (mid-IR) from the selected Landsat 5 image,
+var ndwi = image.normalizedDifference(['B4', 'B5']); //create a NDWI image
+
+/*Create an image visualization parameter to recolor the NDWI image based on pixels values:
+NDWI =< 0, display as white (FFFFFF color)
+NDWI > 0 & < 0.5, display in cyan (00FFFF color)
+NDWI >=0.5 & =< 1, display as blue (0000FF color)
+Higher NDWI suggest higher water content, the three slices are represented with different colors
+that show no water content, low water content and high water content pixels.*/
+
+var ndwislices = ndwi.expression(
+"(b('nd') < 0) ? 5" + //nd refer to the values of each pixel in the NDWI image
+": (b('nd') < 0.25) ? 4" +
+": (b('nd') < 0.5) ? 3" +
+": (b('nd') < 0.75) ? 2" +
+": (b('nd') < 1) ? 1" +
+": 0"
+);
+
+//Display final image based on level sliced image.
+//clip the image is optional step (otherwise other valaue from the specified level will have other color)
+var geo = image.geometry()
+
+Map.addLayer(ndwislices.clip(geo),
+{min: 0, max: 5, palette: ["f8f8f8","babaf8","7c7cf8","3e3ef8","FFFFFF"]},'NDWI Slices');

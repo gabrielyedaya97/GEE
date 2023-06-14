@@ -1,0 +1,27 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var Landsat = ee.ImageCollection("LANDSAT/LC08/C02/T1_TOA");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Import a Landsat 8 top-of-atmosphere reflectance image
+var image = ee.Image('LANDSAT/LC08/C02/T1_TOA/LC08_013032_20201003');
+//Display image as normal color composite.
+
+Map.addLayer(image,{bands: ['B4', 'B3', 'B2'], min :0, max:0.3}, 'RGB image');
+
+// Convert the visible bands from the input image to HSV color space.
+var hsv = image.select(['B4', 'B3', 'B2']).rgbToHsv();
+
+/* Create a new image by concatenating the hue and saturation bands (HSV image) with the panchr
+omatic band from the original image and converting back to RGB. */
+//Concatenate bands
+var combined = ee.Image.cat([hsv.select('hue'), hsv.select('saturation'), image.select('B8')]);
+
+//Convert back to RGB space
+var sharpened = ee.Image(combined).hsvToRgb(); 
+print(sharpened)
+
+//Set the map display to center at New York City and a zoom level 
+
+Map.setCenter(-73.9143, 40.7059,14);
+
+// Display the pan-sharpened result.
+Map.addLayer(sharpened,{bands: ['red', 'green', 'blue'], min :0, max:0.3},'pan-sharpened')

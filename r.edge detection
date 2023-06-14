@@ -1,0 +1,17 @@
+//Load a Landsat 8 image and select only the panchromatic band. The panchromatic band
+
+var image = ee.Image('LANDSAT/LC08/C01/T1/LC08_015030_20140307').select("B8");
+//Center map display on Syracuse with a zoom level of 12
+Map.setCenter(-76.1467, 43.0458,12);
+//Display image as color infrared composite.
+Map.addLayer(image, '', 'input image');
+
+var canny = ee.Algorithms.CannyEdgeDetector({
+image: image, threshold: 200, sigma: 1 });
+
+//Display the outcome of the canny edge detection.
+Map.addLayer(canny, {}, 'canny');
+
+var hough = ee.Algorithms.HoughTransform(canny, 256, 7000, 80);
+//Display the outcome of the Hough transformed canny edge detection.
+Map.addLayer(hough, {}, 'hough');
