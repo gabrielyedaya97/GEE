@@ -1,0 +1,57 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[104.35981709539101, 22.46737093847816],
+          [104.35981709539101, 21.652818141687707],
+          [105.24970967351601, 21.652818141687707],
+          [105.24970967351601, 22.46737093847816]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//Select area of intrest use drawing tool to define the AOI
+var area =geometry;
+
+//Dates to filter images
+var start = ee.Date('2020-10-01');
+var finish = ee.Date('2020-12-30');
+
+//filter the image and set the criteria
+var landsat= ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+.filterBounds(geometry)
+.filterDate(start,finish)
+  //sort cloud precentage
+.sort('CLOUD_COVER',true)
+  //sort acquisition time
+.sort('SENSING_TIME',true)
+  //filter cloud precentage
+.filterMetadata('CLOUD_COVER_LAND', 'less_than', 20);
+  //filter path or row (optional)
+//.filter(ee.Filter.and(ee.Filter.eq('WRS_PATH', 229),ee.Filter.eq('WRS_ROW', 97)));
+
+var col = {bands:['SR_B4','SR_B3','SR_B2'], min :0, max:0.2};
+var count= landsat.size();
+
+//Getting number of filtered images
+print (count);
+
+//Getting data (image id's) on filtered images)
+print('Listed Images',landsat.toList(count));
+
+//locate the image with the zoom setting
+Map.centerObject(area,8);
+
+//displaying each image in collection or selected image
+function addImage(image) {
+  var id = image.id;
+  var imag = ee.Image(image.id);
+  //check image properties (reflectance add  band and reflectance mult band)
+  Map.addLayer(imag.multiply(0.0000275).add(-0.2),col);
+}
+
+landsat.evaluate(function(landsat){
+  landsat.features.map(addImage);
+});
