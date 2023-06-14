@@ -1,0 +1,39 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var landsat = ee.ImageCollection("LANDSAT/LC08/C01/T1_SR"),
+    geometry = /* color: #0B4A8B */ee.Geometry.Polygon(
+        [[[100.33713360562348, 13.86198612261815],
+          [100.33713360562348, 13.523084116680396],
+          [100.69418926968598, 13.523084116680396],
+          [100.69418926968598, 13.86198612261815]]]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+Map.centerObject(geometry,10);
+
+//set the date
+var start = ee.Date('2019-01-01');
+var finish = ee.Date('2019-12-30');
+
+//filtering the images
+
+var bangkok = landsat.filterBounds(geometry)
+                      .filterDate(start,finish)
+                      .filterMetadata('CLOUD_COVER','less_than',50)
+                      .sort('SENSING_TIME',true);
+
+print(bangkok);
+
+
+//LANDSAT/LC08/C01/T1_SR/LC08_129050_20190131
+var first = bangkok.first();
+print(first);
+
+//get specific mage from image collection
+//LANDSAT/LC08/C01/T1_SR/LC08_129050_20190928
+var list = bangkok.toList(bangkok.size());
+var image10 = list.get(10);
+
+print(image10);
+
+//limit the number of images
+var bangkok15 = bangkok.limit(15);
+
+print(bangkok15.toList(bangkok15.size()));
