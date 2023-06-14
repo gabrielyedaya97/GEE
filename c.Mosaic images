@@ -1,0 +1,42 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #98ff00 */
+    /* shown: false */
+    ee.Geometry.Polygon(
+        [[[-82.64141125088757, 23.237571467662914],
+          [-82.78972668057507, 22.620360282145967],
+          [-81.92729992276257, 22.605147656738833],
+          [-81.73503918057507, 23.232523831099964]]]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Load Sentinel image collection from GEE dataset catalog  convert to import record
+var sentinel = ee.ImageCollection("COPERNICUS/S2_SR");
+
+// filter the date acquisition of the images, area and cloud cover
+var havana= sentinel
+		.filterDate('2019-06-01','2019-06-30')
+		.filterBounds(geometry)
+		.filterMetadata('CLOUDY_PIXEL_PERCENTAGE', 'less_than', 20);
+
+var count= havana.size();
+//Getting number of filtered images
+print (count);
+
+
+//Getting data (image id's) on filtered images)
+print('listed Images', havana.toList(count))
+
+
+//set visualization parameters
+var viz ={min:0,max:0.3,bands:['B4','B3','B2']};
+
+//zoom to the image
+Map.centerObject(geometry,9);
+
+
+// mosaic the images using mosaic 
+var mosaic =havana.mosaic().divide(10000);
+Map.addLayer(mosaic,viz);
+
+//mosaic the images using reducer median
+var mosaic2 = havana.reduce(ee.Reducer.median()).divide(10000);
+Map.addLayer(mosaic2,{min:0,max:0.3, bands: ['B4_median', 'B3_median', 'B2_median']});

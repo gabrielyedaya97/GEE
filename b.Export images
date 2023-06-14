@@ -1,0 +1,45 @@
+//import the image
+var L8 = ee.Image('LANDSAT/LC08/C01/T1_SR/LC08_138041_20190303');
+var S2 = ee.Image('COPERNICUS/S2_SR/20190316T043701_20190316T044421_T45RYL');
+//select spectral bands
+var bl8 = ['B2','B3','B4','B5','B6','B7'];
+var bs2 = ['B2','B3','B4','B8','B11','B12'];
+var IL8 = L8.select(bl8);
+var IS2 = S2.select(bs2);
+
+print(IL8);
+print(IS2);
+
+//convert the DN value to surface reflecctance
+
+var image1= ee.Image(IL8).divide(10000);
+var image2= ee.Image(IS2).divide(10000);
+
+//set the visualization parameters
+var viz ={min:0,max:0.2,bands:['B4','B3','B2'],gamma: 1.45};
+Map.setCenter(89.533383, 27.289433,10);
+
+Map.addLayer(image1,viz,'Landsat');
+Map.addLayer(image2,viz,'Sentinel');
+
+//export the images
+var geo1 = L8.geometry();
+var geo2 = S2.geometry();
+
+  //export to asset
+Export.image.toAsset({
+  image: image1,
+  description: 'imageToAsset',
+  assetId: 'Landsat',
+  scale: 30,
+  region: geo1,
+  maxPixels: 1e9,
+});
+  //export to drive
+Export.image.toDrive({
+  image: image2,
+  description: 'imageToDrive',
+  scale: 30,
+  region: geo2,
+  maxPixels: 1e9,
+});

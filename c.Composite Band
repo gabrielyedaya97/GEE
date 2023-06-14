@@ -1,0 +1,37 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = /* color: #d63000 */ee.Geometry.MultiPoint(),
+    s2 = ee.ImageCollection("COPERNICUS/S2_SR");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+
+//navigate are of interest
+Map.setCenter(170.66975918546063,-44.39470475494784,8);
+
+//print(s2);
+
+var albury = ee.Geometry.Point(170.66975918546063,-44.39470475494784);
+
+var image= ee.ImageCollection(s2).filterBounds(albury)
+.filterMetadata('CLOUD_COVERAGE_ASSESSMENT','less_than',20).first().divide(10000);
+
+print(image)
+
+//true color
+Map.addLayer(image,{bands:['B4','B3','B2'], min:0, max:0.4, gamma:1.5},"TRUE");
+// false colour infrared
+Map.addLayer(image,{bands:['B8','B4','B3'], min:0, max:0.4, gamma:1.5},"IR");
+//urban
+Map.addLayer(image,{bands:['B12','B11','B4'], min:0, max:0.4, gamma:1.5},"URBAN");
+//agriculture
+Map.addLayer(image,{bands:['B11','B8','B2'], min:0, max:0.4, gamma:1.5},"AGRICULTURE");
+//atmosphere penetration
+Map.addLayer(image,{bands:['B12','B11','B8A'], min:0, max:0.4, gamma:1.5},"atmosphere penetration");
+//Healthy Vegetation
+Map.addLayer(image,{bands:['B8','B11','B2'], min:0, max:0.4, gamma:1.5},"healthyVege");
+//landor water
+Map.addLayer(image,{bands:['B8','B11','B4'], min:0, max:0.4, gamma:1.5},"land/water");
+//natual color with atmospheric removal
+Map.addLayer(image,{bands:['B12','B8','B3'], min:0, max:0.4, gamma:1.5},"rgb with atm removal");
+//SWIR
+Map.addLayer(image,{bands:['B12','B8','B4'], min:0, max:0.4, gamma:1.5},"SWIR");
+//Vegetation analysis
+Map.addLayer(image,{bands:['B11','B8','B4'], min:0, max:0.2, gamma:1.5},"VEGETATION analysis");

@@ -1,0 +1,17 @@
+//Find projection information for a Landsat image
+var image = ee.Image('LANDSAT/LT05/C01/T1_TOA/LT05_015030_20100531');
+
+//Print the projection information for the selected image 
+print('Projection and transformation information:', image.projection());
+
+//Confirm that the nominal pixel size for the Landsat image is 30m
+print('Pixel size in meters:', image.projection().nominalScale());
+
+// Point to a MODIS vegetation index image product
+var image2 = ee.Image('MODIS/MOD13A1/MOD13A1_005_2014_05_09');
+
+//Print the projection information for the MODIS image 
+print(image2.projection()); //Confirm that the CRS is SR-ORG:6974 (a sinusoidal projection)
+
+var reprojected = image2.reproject('EPSG:4326'); //Confirm that the CRS is EPSG:4326
+print(reprojected.projection());//EPSG:4326 is the code for ellipsoidal coordinates based on WGS 84
