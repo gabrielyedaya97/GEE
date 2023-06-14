@@ -1,0 +1,52 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[104.35981709539101, 22.46737093847816],
+          [104.35981709539101, 21.652818141687707],
+          [105.24970967351601, 21.652818141687707],
+          [105.24970967351601, 22.46737093847816]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//Select area of intrest 
+var area =geometry;
+
+//Dates to filter images
+var start = ee.Date('2020-9-01');
+var finish = ee.Date('2020-12-30');
+
+//loading image using the image ID
+var taiwan= ee.ImageCollection("COPERNICUS/S2_SR")
+.filterBounds(area)
+.filterDate(start,finish)
+.sort('CLOUDY_PIXEL_PERCENTAGE',true)
+.sort('GENERATION_TIME',true)
+.filterMetadata('CLOUDY_PIXEL_PERCENTAGE', 'less_than', 10)
+//.filter(ee.Filter.eq('MGRS_TILE', '43VEH'));
+
+var col = {bands:['B4','B3','B2'], min :0, max:0.3};
+var count= taiwan.size()
+
+//Getting number of filtered images
+print (count);
+
+//Getting data (image id's) on filtered images)
+print('Listed Images',taiwan.toList(count));
+
+//zoom to the image
+Map.centerObject(area,13);
+
+//displaying each image in collection or selected image
+function addImage(image) {
+  var id = image.id
+  var imag = ee.Image(image.id);
+  Map.addLayer(imag.divide(10000),col)
+}
+
+taiwan.evaluate(function(taiwan) {
+  taiwan.features.map(addImage)
+})
