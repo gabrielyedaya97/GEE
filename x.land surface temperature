@@ -1,0 +1,86 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var STUDY = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[37.06563639597229, 36.26917442374792],
+          [37.06563639597229, 36.13952329662897],
+          [37.215325116675416, 36.13952329662897],
+          [37.215325116675416, 36.26917442374792]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//Calculate Emissivity 
+var dataset = ee.Image('NASA/ASTER_GED/AG100_003');
+var emissivity = dataset.select('emissivity_band13').multiply(0.001).clip(STUDY);
+var Vis = {
+  min: 0.958,
+  max:0.979,
+  palette: [
+    '040274', '040281', '0502a3', '0502b8', '0502ce', '0502e6',
+    '0602ff', '235cb1', '307ef3', '269db1', '30c8e2', '32d3ef',
+    '3be285', '3ff38f', '86e26f', '3ae237', 'b5e22e', 'd6e21f',
+    'fff705', 'ffd611', 'ffb613', 'ff8b13', 'ff6e08', 'ff500d',
+    'ff0000', 'de0101', 'c21301', 'a71001', '911003'
+  ],
+};
+Map.addLayer(emissivity,Vis,'Emissivity');
+//convert DN  B and 13 Aster To Radiance Band13
+var dataset = ee.ImageCollection('ASTER/AST_L1T_003')
+.filter(ee.Filter.date('2018-06-01', '2018-08-1'));
+var Vis2 = {
+  min: 9,
+  max:13,
+  palette: [
+    '040274', '040281', '0502a3', '0502b8', '0502ce', '0502e6',
+    '0602ff', '235cb1', '307ef3', '269db1', '30c8e2', '32d3ef',
+    '3be285', '3ff38f', '86e26f', '3ae237', 'b5e22e', 'd6e21f',
+    'fff705', 'ffd611', 'ffb613', 'ff8b13', 'ff6e08', 'ff500d',
+    'ff0000', 'de0101', 'c21301', 'a71001', '911003'
+  ],
+};
+
+var Band13 = dataset.select('B13').mean().clip(STUDY).multiply(0.005693).add(-0.005693);
+Map.addLayer(Band13 ,Vis2,'Radiance Band13');
+//Calculate brightness temperature K 
+var numerator = ee.Image(866.468575).divide(Band13).add(1);
+var denominator = numerator.log();
+var brightness_temperature_K = ee.Image(1350.069147).divide(denominator);
+var Vis3 = {
+  min: 300,
+  max:320,
+  palette: [
+    '040274', '040281', '0502a3', '0502b8', '0502ce', '0502e6',
+    '0602ff', '235cb1', '307ef3', '269db1', '30c8e2', '32d3ef',
+    '3be285', '3ff38f', '86e26f', '3ae237', 'b5e22e', 'd6e21f',
+    'fff705', 'ffd611', 'ffb613', 'ff8b13', 'ff6e08', 'ff500d',
+    'ff0000', 'de0101', 'c21301', 'a71001', '911003'
+  ],
+};
+Map.addLayer(brightness_temperature_K,Vis3,'brightness temperature(K)');
+
+
+var LOg_E = emissivity.log();
+var X1 = ee.Image(10.657).multiply( brightness_temperature_K)
+.multiply(LOg_E).divide(14388);
+var X2 =  ee.Image(X1).add(1);
+
+var LST_C =ee.Image( brightness_temperature_K).divide(X2).add(-273.15) ;
+var Vis4 = {
+  min: 29,
+  max:50,
+  palette: [
+    '040274', '040281', '0502a3', '0502b8', '0502ce', '0502e6',
+    '0602ff', '235cb1', '307ef3', '269db1', '30c8e2', '32d3ef',
+    '3be285', '3ff38f', '86e26f', '3ae237', 'b5e22e', 'd6e21f',
+    'fff705', 'ffd611', 'ffb613', 'ff8b13', 'ff6e08', 'ff500d',
+    'ff0000', 'de0101', 'c21301', 'a71001', '911003'
+  ],
+};
+
+Map.centerObject(STUDY,8);
+Map.addLayer(LST_C,Vis4,'Land surface temperature  (C)');
+
